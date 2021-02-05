@@ -31,7 +31,7 @@ contract RandomNumberConsumer is VRFConsumerBase, Ownable {
         fee = 0.1 * 10**18; // 0.1 LINK
     }
 
-    function setLootboxContract(address _lootboxContract) public onlyOwner {
+    function setLootboxContract(address _lootboxContract) external onlyOwner {
         lootboxContract = _lootboxContract;
     }
 
@@ -39,7 +39,7 @@ contract RandomNumberConsumer is VRFConsumerBase, Ownable {
      * Requests randomness from a user-provided seed
      */
     function getRandomNumber(uint256 userProvidedSeed)
-        public
+        external
         onlyOwner
         returns (bytes32 requestId)
     {

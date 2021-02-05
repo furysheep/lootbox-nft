@@ -57,7 +57,7 @@ contract LootBox is Ownable {
         address contractAddr,
         uint256 tokenId,
         uint256 tokens
-    ) public onlyOwner {
+    ) external onlyOwner {
         for (uint256 i = 0; i < rewards.length; i++) {
             if (
                 rewards[i].tokenId == tokenId &&
@@ -83,7 +83,7 @@ contract LootBox is Ownable {
     /**
      * Receive reward tokens while burning amount of tokens from the sender
      */
-    function receiveTokens(uint256 amount) public {
+    function receiveTokens(uint256 amount) external {
         require(
             amount <= totalAvailableSupply,
             "Amount exceeds available supply"
