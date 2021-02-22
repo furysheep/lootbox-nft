@@ -9,7 +9,6 @@ contract NFTAuctionSale is Ownable {
     using SafeMath for uint256;
 
     event NewAuctionItemCreated(uint256 auctionId);
-
     event EmergencyStarted();
     event EmergencyStopped();
     event BidPlaced(
@@ -63,6 +62,9 @@ contract NFTAuctionSale is Ownable {
         return a > b ? a : b;
     }
 
+    /// @notice Get max bid price in the specified auction
+    /// @param auctionId Auction Id
+    /// @return the max bid price
     function getMaxPrice(uint256 auctionId) public view returns (uint256) {
         require(auctionId <= indexOfAuction, "Invalid auction id");
         Auction storage auction = auctions[auctionId];
@@ -75,6 +77,9 @@ contract NFTAuctionSale is Ownable {
         return maxPrice;
     }
 
+    /// @notice Get min bid price in the specified auction
+    /// @param auctionId Auction Id
+    /// @return the min bid price
     function getMinPrice(uint256 auctionId) public view returns (uint256) {
         require(auctionId <= indexOfAuction, "Invalid auction id");
         Auction storage auction = auctions[auctionId];
@@ -87,6 +92,8 @@ contract NFTAuctionSale is Ownable {
         return minPrice;
     }
 
+    /// @notice Transfers ERC20 tokens holding in contract to the contract owner
+    /// @param tokenAddr ERC20 token address
     function claimERC20Tokens(address tokenAddr) public onlyOwner {
         IERC20(tokenAddr).transferFrom(
             address(this),
@@ -95,6 +102,13 @@ contract NFTAuctionSale is Ownable {
         );
     }
 
+    /// @notice Create auction with specific parameters
+    /// @param paymentTokenAddress ERC20 token address the bidders will pay
+    /// @param paymentTokenAddress ERC1155 token address for the auction
+    /// @param auctionItemTokenId Token ID of NFT
+    /// @param totalSupply ERC20 token address
+    /// @param startTime Auction starting time
+    /// @param endTime Auction ending time
     function createAuction(
         address paymentTokenAddress,
         address auctionItemAddress,
@@ -137,6 +151,8 @@ contract NFTAuctionSale is Ownable {
         emit NewAuctionItemCreated(indexOfAuction);
     }
 
+    /// @notice Claim auction reward tokens to the caller
+    /// @param auctionId Auction Id
     function claimReward(uint256 auctionId) external {
         require(auctionId <= indexOfAuction, "Auction id is invalid");
 
@@ -162,8 +178,12 @@ contract NFTAuctionSale is Ownable {
         emit RewardClaimed(totalWon);
     }
 
+    /// @notice Increase the caller's bid price
+    /// @param auctionId Auction Id
+    /// @param increaseAmount The incrementing price than the original bid
     function increaseMyBid(uint256 auctionId, uint256 increaseAmount) public {
         require(auctionId <= indexOfAuction, "Auction id is invalid");
+        require(increaseAmount > 0, "Wrong amount");
         require(
             block.timestamp < auctions[auctionId].endTime,
             "Auction is ended"
@@ -192,6 +212,9 @@ contract NFTAuctionSale is Ownable {
         emit BidIncreased();
     }
 
+    /// @notice Place bid on auction with the specified price
+    /// @param auctionId Auction Id
+    /// @param bidPrice ERC20 token amount
     function makeBid(uint256 auctionId, uint256 bidPrice)
         public
         isBidAvailable(auctionId)
@@ -264,31 +287,43 @@ contract NFTAuctionSale is Ownable {
         _;
     }
 
+    /// @notice Check the auction is finished
+    /// @param auctionId Auction Id
+    /// @return bool true if finished, otherwise false
     function isAuctionFinished(uint256 auctionId) public view returns (bool) {
         require(auctionId <= indexOfAuction, "Invalid auction id");
         return (emergencyStop || auctions[auctionId].endTime < block.timestamp);
     }
 
+    /// @notice Get remaining time for the auction
+    /// @param auctionId Auction Id
+    /// @return uint the remaining time for the auction
     function getTimeRemaining(uint256 auctionId) public view returns (uint256) {
         require(auctionId <= indexOfAuction, "Invalid auction id");
         return auctions[auctionId].endTime - block.timestamp;
     }
 
+    /// @notice Start emergency, only owner action
     function setEmergencyStart() public onlyOwner {
         emergencyStop = true;
         emit EmergencyStarted();
     }
 
+    /// @notice Stop emergency, only owner action
     function setEmergencyStop() public onlyOwner {
         emergencyStop = false;
         emit EmergencyStopped();
     }
 
+    /// @notice Change max bid per wallet for auction, default is 1
+    /// @param auctionId Auction Id
+    /// @param maxBidPerWallet Max number of bids to set
     function setMaxBidPerWallet(uint256 auctionId, uint256 maxBidPerWallet)
         public
         onlyOwner
     {
         require(auctionId <= indexOfAuction, "Invalid auction id");
+        require(maxBidPerWallet > 0, "Should be greater than 0");
         auctions[auctionId].maxBidPerWallet = maxBidPerWallet;
     }
 }
