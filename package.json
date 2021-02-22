@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "compile": "hardhat compile",
+    "deploy-rinkeby": "hardhat run --network rinkeby scripts/deploy.js"
   },
   "author": "",
   "license": "ISC",
@@ -12,10 +14,10 @@
     "@nomiclabs/hardhat-ethers": "^2.0.1",
     "@nomiclabs/hardhat-waffle": "^2.0.1",
     "chai": "^4.2.0",
+    "dotenv": "^8.2.0",
     "ethereum-waffle": "^3.2.2",
     "ethers": "^5.0.29",
-    "hardhat": "^2.0.8",
-    "dotenv": "^8.2.0"
+    "hardhat": "^2.0.8"
   },
   "dependencies": {
     "@chainlink/contracts": "^0.1.6",
