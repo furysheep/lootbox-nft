@@ -46,13 +46,15 @@ contract NFTAuctionSale is Ownable {
     }
 
     bool public emergencyStop = false;
-    address public salesPerson = owner();
+    address public salesPerson;
 
     mapping(uint256 => Auction) public auctions;
 
     uint256 public indexOfAuction = 0;
 
-    constructor() public {}
+    constructor() public {
+        salesPerson = owner();
+    }
 
     function max(uint256 a, uint256 b) private pure returns (uint256) {
         return a > b ? a : b;
@@ -116,7 +118,7 @@ contract NFTAuctionSale is Ownable {
         uint256 totalSupply,
         uint256 startTime,
         uint256 endTime
-    ) public {
+    ) public onlyOwner {
         require(totalSupply > 0, "Total supply is 0");
         IERC1155 auctionToken = IERC1155(auctionItemAddress);
 
@@ -325,5 +327,11 @@ contract NFTAuctionSale is Ownable {
         require(auctionId <= indexOfAuction, "Invalid auction id");
         require(maxBidPerWallet > 0, "Should be greater than 0");
         auctions[auctionId].maxBidPerWallet = maxBidPerWallet;
+    }
+
+    /// @notice Set sales person address
+    /// @param _salesPerson New sales person address
+    function setSalesPerson(address _salesPerson) public onlyOwner {
+        salesPerson = _salesPerson;
     }
 }
