@@ -45,11 +45,11 @@ contract NFTAuctionSale is Ownable {
         mapping(address => uint256) currentBids;
     }
 
-    bool public emergencyStop = false;
+    bool private emergencyStop = false;
 
     mapping(uint256 => Auction) public auctions;
 
-    uint256 public indexOfAuction = 0;
+    uint256 private indexOfAuction = 0;
 
     constructor() public {}
 
