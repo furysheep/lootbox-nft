@@ -285,8 +285,8 @@ contract NFTAuctionSale is Ownable {
         require(
             !emergencyStop &&
                 auctionId <= indexOfAuction &&
-                auctions[auctionId].startTime >= block.timestamp &&
-                auctions[auctionId].endTime < block.timestamp
+                auctions[auctionId].startTime <= block.timestamp &&
+                auctions[auctionId].endTime > block.timestamp
         );
         _;
     }

@@ -13,6 +13,7 @@ async function main() {
   console.log("Account balance:", (await deployer.getBalance()).toString());
 
   // We get the contract to deploy
+  /*
   const RNGenerator = await hre.ethers.getContractFactory(
     "RandomNumberConsumer"
   );
@@ -32,6 +33,11 @@ async function main() {
 
   console.log("RN Generator deployed to:", generator.address);
   console.log("LootBox deployed to:", lootbox.address);
+  */
+
+  const NFTAuctionSale = await hre.ethers.getContractFactory("NFTAuctionSale");
+  const auctionSale = await NFTAuctionSale.deploy();
+  console.log("Auction sale deployed to:", auctionSale.address);
 }
 
 // We recommend this pattern to be able to use async/await everywhere
