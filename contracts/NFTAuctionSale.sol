@@ -1,4 +1,5 @@
 //SPDX-License-Identifier: Unlicense
+pragma experimental ABIEncoderV2;
 pragma solidity ^0.6.0;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -58,7 +59,23 @@ contract NFTAuctionSale is Ownable {
     }
 
     function min(uint256 a, uint256 b) private pure returns (uint256) {
-        return a > b ? a : b;
+        return a < b ? a : b;
+    }
+
+    function getBids(uint256 auctionId)
+        public
+        view
+        returns (AuctionProgress[] memory)
+    {
+        require(auctionId <= indexOfAuction, "Invalid auction id");
+        Auction storage auction = auctions[auctionId];
+        AuctionProgress[] memory lBids =
+            new AuctionProgress[](auction.totalSupply);
+        for (uint256 i = 0; i < auction.totalSupply; i++) {
+            AuctionProgress storage lBid = auction.bids[i];
+            lBids[i] = lBid;
+        }
+        return lBids;
     }
 
     /// @notice Get max bid price in the specified auction
@@ -126,6 +143,13 @@ contract NFTAuctionSale is Ownable {
         require(
             auctionToken.supportsInterface(0xd9b67a26),
             "Auction token is not ERC1155"
+        );
+
+        // check NFT balance
+        require(
+            auctionToken.balanceOf(_msgSender(), auctionItemTokenId) >=
+                totalSupply,
+            "NFT balance not sufficient"
         );
 
         // check allowance
