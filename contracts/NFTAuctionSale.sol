@@ -46,11 +46,22 @@ contract NFTAuctionSale is Ownable {
         mapping(address => uint256) currentBids;
     }
 
+    struct AuctionInfo {
+        uint256 startTime;
+        uint256 endTime;
+        uint256 totalSupply;
+        uint256 startPrice;
+        uint256 maxBidPerWallet;
+        address paymentTokenAddress; // ERC20
+        address auctionItemAddress; // ERC1155
+        uint256 auctionItemTokenId;
+    }
+
     bool private emergencyStop = false;
 
-    mapping(uint256 => Auction) public auctions;
+    mapping(uint256 => Auction) private auctions;
 
-    uint256 private indexOfAuction = 0;
+    uint256 public totalAuctionCount = 0;
 
     constructor() public {}
 
@@ -62,12 +73,36 @@ contract NFTAuctionSale is Ownable {
         return a < b ? a : b;
     }
 
+    function getBatchAuctions(uint256 fromId)
+        external
+        view
+        returns (AuctionInfo[] memory)
+    {
+        require(fromId <= totalAuctionCount, "Invalid auction id");
+        AuctionInfo[] memory currentAuctions =
+            new AuctionInfo[](totalAuctionCount - fromId + 1);
+        for (uint256 i = fromId; i <= totalAuctionCount; i++) {
+            Auction storage auction = auctions[i];
+            currentAuctions[i - fromId] = AuctionInfo(
+                auction.startTime,
+                auction.endTime,
+                auction.totalSupply,
+                auction.startPrice,
+                auction.maxBidPerWallet,
+                auction.paymentTokenAddress,
+                auction.auctionItemAddress,
+                auction.auctionItemTokenId
+            );
+        }
+        return currentAuctions;
+    }
+
     function getBids(uint256 auctionId)
-        public
+        external
         view
         returns (AuctionProgress[] memory)
     {
-        require(auctionId <= indexOfAuction, "Invalid auction id");
+        require(auctionId <= totalAuctionCount, "Invalid auction id");
         Auction storage auction = auctions[auctionId];
         AuctionProgress[] memory lBids =
             new AuctionProgress[](auction.totalSupply);
@@ -82,7 +117,7 @@ contract NFTAuctionSale is Ownable {
     /// @param auctionId Auction Id
     /// @return the max bid price
     function getMaxPrice(uint256 auctionId) public view returns (uint256) {
-        require(auctionId <= indexOfAuction, "Invalid auction id");
+        require(auctionId <= totalAuctionCount, "Invalid auction id");
         Auction storage auction = auctions[auctionId];
 
         uint256 maxPrice = auction.bids[0].currentPrice;
@@ -97,7 +132,7 @@ contract NFTAuctionSale is Ownable {
     /// @param auctionId Auction Id
     /// @return the min bid price
     function getMinPrice(uint256 auctionId) public view returns (uint256) {
-        require(auctionId <= indexOfAuction, "Invalid auction id");
+        require(auctionId <= totalAuctionCount, "Invalid auction id");
         Auction storage auction = auctions[auctionId];
 
         uint256 minPrice = auction.bids[0].currentPrice;
@@ -161,8 +196,8 @@ contract NFTAuctionSale is Ownable {
         // Init auction struct
 
         // increment auction index and push
-        indexOfAuction = indexOfAuction.add(1);
-        auctions[indexOfAuction] = Auction(
+        totalAuctionCount = totalAuctionCount.add(1);
+        auctions[totalAuctionCount] = Auction(
             startTime,
             endTime,
             totalSupply,
@@ -174,14 +209,14 @@ contract NFTAuctionSale is Ownable {
         );
 
         // emit event
-        emit NewAuctionItemCreated(indexOfAuction);
+        emit NewAuctionItemCreated(totalAuctionCount);
     }
 
     /// @notice Claim auction reward tokens to the caller
     /// @param auctionId Auction Id
     function claimReward(uint256 auctionId) external {
         require(emergencyStop == false, "Emergency stopped");
-        require(auctionId <= indexOfAuction, "Auction id is invalid");
+        require(auctionId <= totalAuctionCount, "Auction id is invalid");
 
         require(
             auctions[auctionId].endTime <= block.timestamp,
@@ -210,7 +245,7 @@ contract NFTAuctionSale is Ownable {
     /// @param increaseAmount The incrementing price than the original bid
     function increaseMyBid(uint256 auctionId, uint256 increaseAmount) external {
         require(emergencyStop == false, "Emergency stopped");
-        require(auctionId <= indexOfAuction, "Auction id is invalid");
+        require(auctionId <= totalAuctionCount, "Auction id is invalid");
         require(increaseAmount > 0, "Wrong amount");
         require(
             block.timestamp < auctions[auctionId].endTime,
@@ -308,7 +343,7 @@ contract NFTAuctionSale is Ownable {
     modifier isBidAvailable(uint256 auctionId) {
         require(
             !emergencyStop &&
-                auctionId <= indexOfAuction &&
+                auctionId <= totalAuctionCount &&
                 auctions[auctionId].startTime <= block.timestamp &&
                 auctions[auctionId].endTime > block.timestamp
         );
@@ -319,7 +354,7 @@ contract NFTAuctionSale is Ownable {
     /// @param auctionId Auction Id
     /// @return bool true if finished, otherwise false
     function isAuctionFinished(uint256 auctionId) external view returns (bool) {
-        require(auctionId <= indexOfAuction, "Invalid auction id");
+        require(auctionId <= totalAuctionCount, "Invalid auction id");
         return (emergencyStop || auctions[auctionId].endTime < block.timestamp);
     }
 
@@ -331,7 +366,7 @@ contract NFTAuctionSale is Ownable {
         view
         returns (uint256)
     {
-        require(auctionId <= indexOfAuction, "Invalid auction id");
+        require(auctionId <= totalAuctionCount, "Invalid auction id");
         return auctions[auctionId].endTime - block.timestamp;
     }
 
@@ -354,7 +389,7 @@ contract NFTAuctionSale is Ownable {
         external
         onlyOwner
     {
-        require(auctionId <= indexOfAuction, "Invalid auction id");
+        require(auctionId <= totalAuctionCount, "Invalid auction id");
         auctions[auctionId].startTime = startTime;
     }
 
@@ -365,7 +400,7 @@ contract NFTAuctionSale is Ownable {
         external
         onlyOwner
     {
-        require(auctionId <= indexOfAuction, "Invalid auction id");
+        require(auctionId <= totalAuctionCount, "Invalid auction id");
         auctions[auctionId].endTime = endTime;
     }
 
@@ -377,7 +412,7 @@ contract NFTAuctionSale is Ownable {
         onlyOwner
     {
         require(totalSupply > 0, "Total supply should be greater than 0");
-        require(auctionId <= indexOfAuction, "Invalid auction id");
+        require(auctionId <= totalAuctionCount, "Invalid auction id");
         auctions[auctionId].totalSupply = totalSupply;
     }
 
@@ -388,7 +423,7 @@ contract NFTAuctionSale is Ownable {
         external
         onlyOwner
     {
-        require(auctionId <= indexOfAuction, "Invalid auction id");
+        require(auctionId <= totalAuctionCount, "Invalid auction id");
         auctions[auctionId].startPrice = startPrice;
     }
 
@@ -399,7 +434,7 @@ contract NFTAuctionSale is Ownable {
         uint256 auctionId,
         uint256 maxBidPerWallet
     ) external onlyOwner {
-        require(auctionId <= indexOfAuction, "Invalid auction id");
+        require(auctionId <= totalAuctionCount, "Invalid auction id");
         require(maxBidPerWallet > 0, "Should be greater than 0");
         auctions[auctionId].maxBidPerWallet = maxBidPerWallet;
     }
@@ -411,7 +446,7 @@ contract NFTAuctionSale is Ownable {
         uint256 auctionId,
         address paymentTokenAddress
     ) external onlyOwner {
-        require(auctionId <= indexOfAuction, "Invalid auction id");
+        require(auctionId <= totalAuctionCount, "Invalid auction id");
         auctions[auctionId].paymentTokenAddress = paymentTokenAddress;
     }
 
@@ -422,7 +457,7 @@ contract NFTAuctionSale is Ownable {
         uint256 auctionId,
         address auctionItemAddress
     ) external onlyOwner {
-        require(auctionId <= indexOfAuction, "Invalid auction id");
+        require(auctionId <= totalAuctionCount, "Invalid auction id");
         auctions[auctionId].auctionItemAddress = auctionItemAddress;
     }
 
@@ -433,7 +468,7 @@ contract NFTAuctionSale is Ownable {
         uint256 auctionId,
         uint256 auctionItemTokenId
     ) external onlyOwner {
-        require(auctionId <= indexOfAuction, "Invalid auction id");
+        require(auctionId <= totalAuctionCount, "Invalid auction id");
         auctions[auctionId].auctionItemTokenId = auctionItemTokenId;
     }
 }
