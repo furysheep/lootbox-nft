@@ -33,19 +33,6 @@ contract NFTAuctionSale is Ownable {
         address bidder;
     }
 
-    struct Auction {
-        uint256 startTime;
-        uint256 endTime;
-        uint256 totalSupply;
-        uint256 startPrice;
-        uint256 maxBidPerWallet;
-        address paymentTokenAddress; // ERC20
-        address auctionItemAddress; // ERC1155
-        uint256 auctionItemTokenId;
-        mapping(uint256 => AuctionProgress) bids;
-        mapping(address => uint256) currentBids;
-    }
-
     struct AuctionInfo {
         uint256 startTime;
         uint256 endTime;
@@ -59,7 +46,9 @@ contract NFTAuctionSale is Ownable {
 
     bool private emergencyStop = false;
 
-    mapping(uint256 => Auction) private auctions;
+    mapping(uint256 => AuctionInfo) private auctions;
+    mapping(uint256 => mapping(uint256 => AuctionProgress)) private bids;
+    mapping(uint256 => mapping(address => uint256)) private currentBids;
 
     uint256 public totalAuctionCount = 0;
 
@@ -82,17 +71,8 @@ contract NFTAuctionSale is Ownable {
         AuctionInfo[] memory currentAuctions =
             new AuctionInfo[](totalAuctionCount - fromId + 1);
         for (uint256 i = fromId; i <= totalAuctionCount; i++) {
-            Auction storage auction = auctions[i];
-            currentAuctions[i - fromId] = AuctionInfo(
-                auction.startTime,
-                auction.endTime,
-                auction.totalSupply,
-                auction.startPrice,
-                auction.maxBidPerWallet,
-                auction.paymentTokenAddress,
-                auction.auctionItemAddress,
-                auction.auctionItemTokenId
-            );
+            AuctionInfo storage auction = auctions[i];
+            currentAuctions[i - fromId] = auction;
         }
         return currentAuctions;
     }
@@ -103,11 +83,13 @@ contract NFTAuctionSale is Ownable {
         returns (AuctionProgress[] memory)
     {
         require(auctionId <= totalAuctionCount, "Invalid auction id");
-        Auction storage auction = auctions[auctionId];
+        AuctionInfo storage auction = auctions[auctionId];
         AuctionProgress[] memory lBids =
             new AuctionProgress[](auction.totalSupply);
+        mapping(uint256 => AuctionProgress) storage auctionBids =
+            bids[auctionId];
         for (uint256 i = 0; i < auction.totalSupply; i++) {
-            AuctionProgress storage lBid = auction.bids[i];
+            AuctionProgress storage lBid = auctionBids[i];
             lBids[i] = lBid;
         }
         return lBids;
@@ -118,11 +100,13 @@ contract NFTAuctionSale is Ownable {
     /// @return the max bid price
     function getMaxPrice(uint256 auctionId) public view returns (uint256) {
         require(auctionId <= totalAuctionCount, "Invalid auction id");
-        Auction storage auction = auctions[auctionId];
+        AuctionInfo storage auction = auctions[auctionId];
+        mapping(uint256 => AuctionProgress) storage auctionBids =
+            bids[auctionId];
 
-        uint256 maxPrice = auction.bids[0].currentPrice;
+        uint256 maxPrice = auctionBids[0].currentPrice;
         for (uint256 i = 1; i < auction.totalSupply; i++) {
-            maxPrice = max(maxPrice, auction.bids[i].currentPrice);
+            maxPrice = max(maxPrice, auctionBids[i].currentPrice);
         }
 
         return maxPrice;
@@ -133,11 +117,13 @@ contract NFTAuctionSale is Ownable {
     /// @return the min bid price
     function getMinPrice(uint256 auctionId) public view returns (uint256) {
         require(auctionId <= totalAuctionCount, "Invalid auction id");
-        Auction storage auction = auctions[auctionId];
+        AuctionInfo storage auction = auctions[auctionId];
+        mapping(uint256 => AuctionProgress) storage auctionBids =
+            bids[auctionId];
 
-        uint256 minPrice = auction.bids[0].currentPrice;
+        uint256 minPrice = auctionBids[0].currentPrice;
         for (uint256 i = 1; i < auction.totalSupply; i++) {
-            minPrice = min(minPrice, auction.bids[i].currentPrice);
+            minPrice = min(minPrice, auctionBids[i].currentPrice);
         }
 
         return minPrice;
@@ -197,7 +183,7 @@ contract NFTAuctionSale is Ownable {
 
         // increment auction index and push
         totalAuctionCount = totalAuctionCount.add(1);
-        auctions[totalAuctionCount] = Auction(
+        auctions[totalAuctionCount] = AuctionInfo(
             startTime,
             endTime,
             totalSupply,
@@ -223,11 +209,13 @@ contract NFTAuctionSale is Ownable {
             "Auction is not ended yet"
         );
 
-        uint256 totalWon = auctions[auctionId].currentBids[_msgSender()];
+        mapping(address => uint256) storage auctionCurrentBids =
+            currentBids[auctionId];
+        uint256 totalWon = auctionCurrentBids[_msgSender()];
 
         require(totalWon > 0, "Nothing to claim");
 
-        auctions[auctionId].currentBids[_msgSender()] = 0;
+        auctionCurrentBids[_msgSender()] = 0;
 
         IERC1155(auctions[auctionId].auctionItemAddress).safeTransferFrom(
             owner(),
@@ -252,19 +240,23 @@ contract NFTAuctionSale is Ownable {
             "Auction is ended"
         );
 
-        Auction storage auction = auctions[auctionId];
+        AuctionInfo storage auction = auctions[auctionId];
 
-        uint256 count = auction.currentBids[_msgSender()];
+        uint256 count = currentBids[auctionId][_msgSender()];
         require(count > 0, "Not in current bids");
 
-        IERC20(auction.paymentTokenAddress).transfer(
+        IERC20(auction.paymentTokenAddress).transferFrom(
+            _msgSender(),
             address(this),
             increaseAmount * count
         );
 
+        mapping(uint256 => AuctionProgress) storage auctionBids =
+            bids[auctionId];
+
         // Iterate currentBids and increment currentPrice
         for (uint256 i = 0; i < auction.totalSupply; i++) {
-            AuctionProgress storage progress = auction.bids[i];
+            AuctionProgress storage progress = auctionBids[i];
             if (progress.bidder == _msgSender()) {
                 progress.currentPrice = progress.currentPrice.add(
                     increaseAmount
@@ -285,7 +277,7 @@ contract NFTAuctionSale is Ownable {
         uint256 minIndex = 0;
         uint256 minPrice = getMinPrice(auctionId);
 
-        Auction storage auction = auctions[auctionId];
+        AuctionInfo storage auction = auctions[auctionId];
         IERC20 paymentToken = IERC20(auction.paymentTokenAddress);
         require(
             bidPrice >= auction.startPrice && bidPrice > minPrice,
@@ -295,17 +287,22 @@ contract NFTAuctionSale is Ownable {
         uint256 allowance = paymentToken.allowance(_msgSender(), address(this));
         require(allowance >= bidPrice, "Check the token allowance");
 
+        mapping(address => uint256) storage auctionCurrentBids =
+            currentBids[auctionId];
         require(
-            auction.currentBids[_msgSender()] < auction.maxBidPerWallet,
+            auctionCurrentBids[_msgSender()] < auction.maxBidPerWallet,
             "Max bid per wallet exceeded"
         );
 
+        mapping(uint256 => AuctionProgress) storage auctionBids =
+            bids[auctionId];
+
         for (uint256 i = 0; i < auction.totalSupply; i++) {
             // Just place the bid if remaining
-            if (auction.bids[i].currentPrice == 0) {
+            if (auctionBids[i].currentPrice == 0) {
                 minIndex = i;
                 break;
-            } else if (auction.bids[i].currentPrice == minPrice) {
+            } else if (auctionBids[i].currentPrice == minPrice) {
                 // Get last minimum price bidder
                 minIndex = i;
             }
@@ -314,28 +311,29 @@ contract NFTAuctionSale is Ownable {
         // Replace current minIndex bidder with the msg.sender
         paymentToken.transferFrom(_msgSender(), address(this), bidPrice);
 
-        if (auction.bids[minIndex].currentPrice != 0) {
+        if (auctionBids[minIndex].currentPrice != 0) {
             // return previous bidders tokens
             paymentToken.transferFrom(
                 address(this),
-                auction.bids[minIndex].bidder,
-                auction.bids[minIndex].currentPrice
+                auctionBids[minIndex].bidder,
+                auctionBids[minIndex].currentPrice
             );
-            auction.currentBids[auction.bids[minIndex].bidder]--;
+            auctionCurrentBids[auctionBids[minIndex].bidder]--;
 
             emit BidReplaced(
                 auctionId,
                 minIndex,
-                auction.bids[minIndex].bidder,
+                auctionBids[minIndex].bidder,
                 tx.origin
             );
         }
 
-        auction.bids[minIndex].currentPrice = bidPrice;
-        auction.bids[minIndex].bidder = _msgSender();
+        auctionBids[minIndex].currentPrice = bidPrice;
+        auctionBids[minIndex].bidder = _msgSender();
 
-        auction.currentBids[_msgSender()] = auction.currentBids[_msgSender()]
-            .add(1);
+        auctionCurrentBids[_msgSender()] = auctionCurrentBids[_msgSender()].add(
+            1
+        );
 
         emit BidPlaced(auctionId, minIndex, _msgSender(), tx.origin);
     }
