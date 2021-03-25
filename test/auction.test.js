@@ -48,6 +48,7 @@ describe('Auction Contract', function () {
       weth.address,
       nftToken.address,
       TOKEN_ID,
+      0,
       2, // number of tokens
       now,
       now + 20

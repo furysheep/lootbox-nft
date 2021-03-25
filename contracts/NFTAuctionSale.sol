@@ -1,4 +1,4 @@
-//SPDX-License-Identifier: Unlicense
+// SPDX-License-Identifier: MIT
 pragma experimental ABIEncoderV2;
 pragma solidity ^0.6.0;
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -16,17 +16,28 @@ contract NFTAuctionSale is Ownable {
         uint256 auctionId,
         uint256 bidId,
         address addr,
+        uint256 bidPrice,
+        uint256 timestamp,
         address transaction
     );
     event BidReplaced(
         uint256 auctionId,
         uint256 bidId,
         address addr,
+        uint256 bidPrice,
+        uint256 timestamp,
         address transaction
     );
-    event AuctionItemClaimed(uint256 auctionId);
-    event RewardClaimed(uint256 tokenCount);
-    event BidIncreased();
+
+    event RewardClaimed(address addr, uint256 tokenCount);
+    event BidIncreased(
+        uint256 auctionId,
+        uint256 bidId,
+        address addr,
+        uint256 bidPrice,
+        uint256 timestamp,
+        address transaction
+    );
 
     struct AuctionProgress {
         uint256 currentPrice;
@@ -38,7 +49,6 @@ contract NFTAuctionSale is Ownable {
         uint256 endTime;
         uint256 totalSupply;
         uint256 startPrice;
-        uint256 maxBidPerWallet;
         address paymentTokenAddress; // ERC20
         address auctionItemAddress; // ERC1155
         uint256 auctionItemTokenId;
@@ -146,12 +156,14 @@ contract NFTAuctionSale is Ownable {
     /// @param paymentTokenAddress ERC1155 token address for the auction
     /// @param auctionItemTokenId Token ID of NFT
     /// @param totalSupply ERC20 token address
+    /// @param startPrice Bid starting price
     /// @param startTime Auction starting time
     /// @param endTime Auction ending time
     function createAuction(
         address paymentTokenAddress,
         address auctionItemAddress,
         uint256 auctionItemTokenId,
+        uint256 startPrice,
         uint256 totalSupply,
         uint256 startTime,
         uint256 endTime
@@ -187,8 +199,7 @@ contract NFTAuctionSale is Ownable {
             startTime,
             endTime,
             totalSupply,
-            0,
-            1,
+            startPrice,
             paymentTokenAddress,
             auctionItemAddress,
             auctionItemTokenId
@@ -225,7 +236,7 @@ contract NFTAuctionSale is Ownable {
             ""
         );
 
-        emit RewardClaimed(totalWon);
+        emit RewardClaimed(_msgSender(), totalWon);
     }
 
     /// @notice Increase the caller's bid price
@@ -261,10 +272,16 @@ contract NFTAuctionSale is Ownable {
                 progress.currentPrice = progress.currentPrice.add(
                     increaseAmount
                 );
+                emit BidIncreased(
+                    auctionId,
+                    i,
+                    _msgSender(),
+                    progress.currentPrice,
+                    block.timestamp,
+                    tx.origin
+                );
             }
         }
-
-        emit BidIncreased();
     }
 
     /// @notice Place bid on auction with the specified price
@@ -290,7 +307,7 @@ contract NFTAuctionSale is Ownable {
         mapping(address => uint256) storage auctionCurrentBids =
             currentBids[auctionId];
         require(
-            auctionCurrentBids[_msgSender()] < auction.maxBidPerWallet,
+            auctionCurrentBids[_msgSender()] < 1,
             "Max bid per wallet exceeded"
         );
 
@@ -324,6 +341,8 @@ contract NFTAuctionSale is Ownable {
                 auctionId,
                 minIndex,
                 auctionBids[minIndex].bidder,
+                auctionBids[minIndex].currentPrice,
+                block.timestamp,
                 tx.origin
             );
         }
@@ -335,7 +354,14 @@ contract NFTAuctionSale is Ownable {
             1
         );
 
-        emit BidPlaced(auctionId, minIndex, _msgSender(), tx.origin);
+        emit BidPlaced(
+            auctionId,
+            minIndex,
+            _msgSender(),
+            bidPrice,
+            block.timestamp,
+            tx.origin
+        );
     }
 
     modifier isBidAvailable(uint256 auctionId) {
@@ -423,18 +449,6 @@ contract NFTAuctionSale is Ownable {
     {
         require(auctionId <= totalAuctionCount, "Invalid auction id");
         auctions[auctionId].startPrice = startPrice;
-    }
-
-    /// @notice Change max bid per wallet for auction, default is 1
-    /// @param auctionId Auction Id
-    /// @param maxBidPerWallet Max number of bids to set
-    function setMaxBidPerWalletForAuction(
-        uint256 auctionId,
-        uint256 maxBidPerWallet
-    ) external onlyOwner {
-        require(auctionId <= totalAuctionCount, "Invalid auction id");
-        require(maxBidPerWallet > 0, "Should be greater than 0");
-        auctions[auctionId].maxBidPerWallet = maxBidPerWallet;
     }
 
     /// @notice Change ERC20 token address for auction
