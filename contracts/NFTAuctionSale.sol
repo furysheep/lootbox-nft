@@ -241,11 +241,10 @@ contract NFTAuctionSale is Ownable {
 
     /// @notice Increase the caller's bid price
     /// @param auctionId Auction Id
-    /// @param increaseAmount The incrementing price than the original bid
-    function increaseMyBid(uint256 auctionId, uint256 increaseAmount) external {
+    function increaseMyBid(uint256 auctionId) external payable {
         require(emergencyStop == false, "Emergency stopped");
         require(auctionId <= totalAuctionCount, "Auction id is invalid");
-        require(increaseAmount > 0, "Wrong amount");
+        require(msg.value > 0, "Wrong amount");
         require(
             block.timestamp < auctions[auctionId].endTime,
             "Auction is ended"
@@ -256,12 +255,6 @@ contract NFTAuctionSale is Ownable {
         uint256 count = currentBids[auctionId][_msgSender()];
         require(count > 0, "Not in current bids");
 
-        IERC20(auction.paymentTokenAddress).transferFrom(
-            _msgSender(),
-            address(this),
-            increaseAmount * count
-        );
-
         mapping(uint256 => AuctionProgress) storage auctionBids =
             bids[auctionId];
 
@@ -269,9 +262,7 @@ contract NFTAuctionSale is Ownable {
         for (uint256 i = 0; i < auction.totalSupply; i++) {
             AuctionProgress storage progress = auctionBids[i];
             if (progress.bidder == _msgSender()) {
-                progress.currentPrice = progress.currentPrice.add(
-                    increaseAmount
-                );
+                progress.currentPrice = progress.currentPrice.add(msg.value);
                 emit BidIncreased(
                     auctionId,
                     i,
@@ -284,25 +275,21 @@ contract NFTAuctionSale is Ownable {
         }
     }
 
-    /// @notice Place bid on auction with the specified price
+    /// @notice Place bid on auction with the specified price with ETH
     /// @param auctionId Auction Id
-    /// @param bidPrice ERC20 token amount
-    function makeBid(uint256 auctionId, uint256 bidPrice)
+    function makeBid(uint256 auctionId)
         external
+        payable
         isBidAvailable(auctionId)
     {
         uint256 minIndex = 0;
         uint256 minPrice = getMinPrice(auctionId);
 
         AuctionInfo storage auction = auctions[auctionId];
-        IERC20 paymentToken = IERC20(auction.paymentTokenAddress);
         require(
-            bidPrice >= auction.startPrice && bidPrice > minPrice,
+            msg.value >= auction.startPrice && msg.value > minPrice,
             "Cannot place bid at low price"
         );
-
-        uint256 allowance = paymentToken.allowance(_msgSender(), address(this));
-        require(allowance >= bidPrice, "Check the token allowance");
 
         mapping(address => uint256) storage auctionCurrentBids =
             currentBids[auctionId];
@@ -325,16 +312,14 @@ contract NFTAuctionSale is Ownable {
             }
         }
 
-        // Replace current minIndex bidder with the msg.sender
-        paymentToken.transferFrom(_msgSender(), address(this), bidPrice);
-
         if (auctionBids[minIndex].currentPrice != 0) {
             // return previous bidders tokens
-            paymentToken.transferFrom(
-                address(this),
-                auctionBids[minIndex].bidder,
-                auctionBids[minIndex].currentPrice
-            );
+            (bool sent, bytes memory data) =
+                address(auctionBids[minIndex].bidder).call{
+                    value: auctionBids[minIndex].currentPrice
+                }("");
+            require(sent, "Failed to send Ether");
+
             auctionCurrentBids[auctionBids[minIndex].bidder]--;
 
             emit BidReplaced(
@@ -347,7 +332,7 @@ contract NFTAuctionSale is Ownable {
             );
         }
 
-        auctionBids[minIndex].currentPrice = bidPrice;
+        auctionBids[minIndex].currentPrice = msg.value;
         auctionBids[minIndex].bidder = _msgSender();
 
         auctionCurrentBids[_msgSender()] = auctionCurrentBids[_msgSender()].add(
@@ -358,7 +343,7 @@ contract NFTAuctionSale is Ownable {
             auctionId,
             minIndex,
             _msgSender(),
-            bidPrice,
+            msg.value,
             block.timestamp,
             tx.origin
         );
@@ -449,17 +434,6 @@ contract NFTAuctionSale is Ownable {
     {
         require(auctionId <= totalAuctionCount, "Invalid auction id");
         auctions[auctionId].startPrice = startPrice;
-    }
-
-    /// @notice Change ERC20 token address for auction
-    /// @param auctionId Auction Id
-    /// @param paymentTokenAddress new ERC20 token address
-    function setPaymentTokenAddressForAuction(
-        uint256 auctionId,
-        address paymentTokenAddress
-    ) external onlyOwner {
-        require(auctionId <= totalAuctionCount, "Invalid auction id");
-        auctions[auctionId].paymentTokenAddress = paymentTokenAddress;
     }
 
     /// @notice Change auction item address for auction
