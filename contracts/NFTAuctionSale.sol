@@ -241,7 +241,7 @@ contract NFTAuctionSale is Ownable {
 
     /// @notice Increase the caller's bid price
     /// @param auctionId Auction Id
-    function increaseMyBid(uint256 auctionId) external payable {
+    function increaseMyBidETH(uint256 auctionId) external payable {
         require(emergencyStop == false, "Emergency stopped");
         require(auctionId <= totalAuctionCount, "Auction id is invalid");
         require(msg.value > 0, "Wrong amount");
@@ -251,6 +251,11 @@ contract NFTAuctionSale is Ownable {
         );
 
         AuctionInfo storage auction = auctions[auctionId];
+
+        require(
+            auction.paymentTokenAddress == address(0),
+            "Cannot use ETH in this auction"
+        );
 
         uint256 count = currentBids[auctionId][_msgSender()];
         require(count > 0, "Not in current bids");
@@ -277,7 +282,7 @@ contract NFTAuctionSale is Ownable {
 
     /// @notice Place bid on auction with the specified price with ETH
     /// @param auctionId Auction Id
-    function makeBid(uint256 auctionId)
+    function makeBidETH(uint256 auctionId)
         external
         payable
         isBidAvailable(auctionId)
@@ -286,6 +291,10 @@ contract NFTAuctionSale is Ownable {
         uint256 minPrice = getMinPrice(auctionId);
 
         AuctionInfo storage auction = auctions[auctionId];
+        require(
+            auction.paymentTokenAddress == address(0),
+            "Cannot use ETH in this auction"
+        );
         require(
             msg.value >= auction.startPrice && msg.value > minPrice,
             "Cannot place bid at low price"
@@ -344,6 +353,134 @@ contract NFTAuctionSale is Ownable {
             minIndex,
             _msgSender(),
             msg.value,
+            block.timestamp,
+            tx.origin
+        );
+    }
+
+    /// @notice Increase the caller's bid price
+    /// @param auctionId Auction Id
+    /// @param increaseAmount The incrementing price than the original bid
+    function increaseMyBid(uint256 auctionId, uint256 increaseAmount) external {
+        require(emergencyStop == false, "Emergency stopped");
+        require(auctionId <= totalAuctionCount, "Auction id is invalid");
+        require(increaseAmount > 0, "Wrong amount");
+        require(
+            block.timestamp < auctions[auctionId].endTime,
+            "Auction is ended"
+        );
+
+        AuctionInfo storage auction = auctions[auctionId];
+
+        require(auction.paymentTokenAddress != address(0), "Wrong function");
+
+        uint256 count = currentBids[auctionId][_msgSender()];
+        require(count > 0, "Not in current bids");
+
+        IERC20(auction.paymentTokenAddress).transferFrom(
+            _msgSender(),
+            address(this),
+            increaseAmount * count
+        );
+
+        mapping(uint256 => AuctionProgress) storage auctionBids =
+            bids[auctionId];
+
+        // Iterate currentBids and increment currentPrice
+        for (uint256 i = 0; i < auction.totalSupply; i++) {
+            AuctionProgress storage progress = auctionBids[i];
+            if (progress.bidder == _msgSender()) {
+                progress.currentPrice = progress.currentPrice.add(
+                    increaseAmount
+                );
+                emit BidIncreased(
+                    auctionId,
+                    i,
+                    _msgSender(),
+                    progress.currentPrice,
+                    block.timestamp,
+                    tx.origin
+                );
+            }
+        }
+    }
+
+    /// @notice Place bid on auction with the specified price
+    /// @param auctionId Auction Id
+    /// @param bidPrice ERC20 token amount
+    function makeBid(uint256 auctionId, uint256 bidPrice)
+        external
+        isBidAvailable(auctionId)
+    {
+        uint256 minIndex = 0;
+        uint256 minPrice = getMinPrice(auctionId);
+
+        AuctionInfo storage auction = auctions[auctionId];
+        require(auction.paymentTokenAddress != address(0), "Wrong function");
+        IERC20 paymentToken = IERC20(auction.paymentTokenAddress);
+        require(
+            bidPrice >= auction.startPrice && bidPrice > minPrice,
+            "Cannot place bid at low price"
+        );
+
+        uint256 allowance = paymentToken.allowance(_msgSender(), address(this));
+        require(allowance >= bidPrice, "Check the token allowance");
+
+        mapping(address => uint256) storage auctionCurrentBids =
+            currentBids[auctionId];
+        require(
+            auctionCurrentBids[_msgSender()] < 1,
+            "Max bid per wallet exceeded"
+        );
+
+        mapping(uint256 => AuctionProgress) storage auctionBids =
+            bids[auctionId];
+
+        for (uint256 i = 0; i < auction.totalSupply; i++) {
+            // Just place the bid if remaining
+            if (auctionBids[i].currentPrice == 0) {
+                minIndex = i;
+                break;
+            } else if (auctionBids[i].currentPrice == minPrice) {
+                // Get last minimum price bidder
+                minIndex = i;
+            }
+        }
+
+        // Replace current minIndex bidder with the msg.sender
+        paymentToken.transferFrom(_msgSender(), address(this), bidPrice);
+
+        if (auctionBids[minIndex].currentPrice != 0) {
+            // return previous bidders tokens
+            paymentToken.transferFrom(
+                address(this),
+                auctionBids[minIndex].bidder,
+                auctionBids[minIndex].currentPrice
+            );
+            auctionCurrentBids[auctionBids[minIndex].bidder]--;
+
+            emit BidReplaced(
+                auctionId,
+                minIndex,
+                auctionBids[minIndex].bidder,
+                auctionBids[minIndex].currentPrice,
+                block.timestamp,
+                tx.origin
+            );
+        }
+
+        auctionBids[minIndex].currentPrice = bidPrice;
+        auctionBids[minIndex].bidder = _msgSender();
+
+        auctionCurrentBids[_msgSender()] = auctionCurrentBids[_msgSender()].add(
+            1
+        );
+
+        emit BidPlaced(
+            auctionId,
+            minIndex,
+            _msgSender(),
+            bidPrice,
             block.timestamp,
             tx.origin
         );
@@ -434,6 +571,17 @@ contract NFTAuctionSale is Ownable {
     {
         require(auctionId <= totalAuctionCount, "Invalid auction id");
         auctions[auctionId].startPrice = startPrice;
+    }
+
+    /// @notice Change ERC20 token address for auction
+    /// @param auctionId Auction Id
+    /// @param paymentTokenAddress new ERC20 token address
+    function setPaymentTokenAddressForAuction(
+        uint256 auctionId,
+        address paymentTokenAddress
+    ) external onlyOwner {
+        require(auctionId <= totalAuctionCount, "Invalid auction id");
+        auctions[auctionId].paymentTokenAddress = paymentTokenAddress;
     }
 
     /// @notice Change auction item address for auction

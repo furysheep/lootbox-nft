@@ -4,8 +4,8 @@ const TOKEN_ID = 1;
 
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
-describe('Auction Contract', function () {
-  let auction, nftToken, weth;
+describe('Auction Contract ETH flow', function () {
+  let auction, nftToken;
   let owner, bidder1, bidder2, bidder3;
   it('Deploy contracts', async function () {
     [owner, bidder1, bidder2, bidder3] = await ethers.getSigners();
@@ -29,6 +29,7 @@ describe('Auction Contract', function () {
     const now = parseInt(Date.now() / 1000);
 
     await auction.createAuction(
+      ethers.constants.AddressZero,
       nftToken.address,
       TOKEN_ID,
       0,
@@ -41,20 +42,20 @@ describe('Auction Contract', function () {
   it('User1 bid 1eth', async function () {
     await auction
       .connect(bidder1)
-      .makeBid(1, { value: ethers.utils.parseEther('1.0') });
+      .makeBidETH(1, { value: ethers.utils.parseEther('1.0') });
   });
 
   it('User2 bid 0.5eth', async function () {
     await auction
       .connect(bidder2)
-      .makeBid(1, { value: ethers.utils.parseEther('0.5') });
+      .makeBidETH(1, { value: ethers.utils.parseEther('0.5') });
   });
 
   it('User3 bid 2eth', async function () {
     await expect(
       auction
         .connect(bidder3)
-        .makeBid(1, { value: ethers.utils.parseEther('2.0') })
+        .makeBidETH(1, { value: ethers.utils.parseEther('2.0') })
     ).to.not.reverted;
   });
 
@@ -72,7 +73,7 @@ describe('Auction Contract', function () {
     await expect(
       auction
         .connect(bidder1)
-        .increaseMyBid(1, { value: ethers.utils.parseEther('0.5') })
+        .increaseMyBidETH(1, { value: ethers.utils.parseEther('0.5') })
     ).to.not.reverted;
 
     const bids = await auction.getBids(1);
